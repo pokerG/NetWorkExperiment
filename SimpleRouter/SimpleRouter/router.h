@@ -25,7 +25,7 @@ void ARPPacketProc(struct pcap_pkthdr *header, const u_char *pkt_data);//process
 void IPPacketProc(IfInfo_t *pIfInfo, struct pcap_pkthdr *header, const u_char *pkt_data);//process IP
 void ICMPPacketProc(IfInfo_t *pIfInfo, BYTE typp, BYTE code, const u_char *pktdata);//process ICMP
 bool IsChecksum(char *buffer);//the Checksum is right?
-unsigned short ChecksumCompute(unsigned short *buffer, int size);//Compute Checksum
+USHORT ChecksumCompute(USHORT *buffer, int size);//Compute Checksum
 void Logprint(string str); //print log
 void CALLBACK OnTimer(HWND hwnd, UINT message, UINT iTimerID, DWORD dwTime);
 #endif 

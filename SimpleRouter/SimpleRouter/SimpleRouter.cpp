@@ -27,7 +27,7 @@ void init(){
 	IP_t ipaddr;
 	UCHAR srcMAC[6];
 	ULONG srcIP;
-	//SetTimer(3999, 10000, 0);
+	SetTimer(NULL,3999, 10000, OnTimer);
 	//Get local device list
 	if (pcap_findalldevs_ex(PCAP_SRC_IF_STRING, NULL, &alldevs, errbuf) == -1){
 		Logprint("pcap_findalldevs_ex error: " + string(errbuf));

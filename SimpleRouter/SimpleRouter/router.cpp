@@ -34,7 +34,8 @@ void cpyMAC(UCHAR *MAC1, UCHAR *MAC2){
 
 bool cmpMAC(UCHAR *MAC1, UCHAR *MAC2){
 	for (int i = 0; i < 6; i++){
-		if (MAC1[i] != MAC2[i]) return false;
+		if (MAC1[i] != MAC2[i]) 
+			return false;
 	}
 	return true;
 }
@@ -61,26 +62,26 @@ string MACntoa(UCHAR *nMACAddr){
 bool IsChecksum(char *buffer){
 	IPHeader_t * ip_header = (IPHeader_t *)buffer;
 
-	unsigned short check_buff[sizeof(IPHeader_t)];
-	unsigned short checksumBuf = ip_header->Checksum;
+	USHORT check_buff[sizeof(IPHeader_t)];
+	USHORT checksumBuf = ip_header->Checksum;
 
-	ip_header->Checksum = 0;
+	//ip_header->Checksum = 0;
 
 	memset(check_buff, 0, sizeof(IPHeader_t));
 	memcpy(check_buff, ip_header, sizeof(IPHeader_t));
 	ip_header->Checksum = ChecksumCompute(check_buff, sizeof(IPHeader_t));
-	if (ip_header->Checksum == checksumBuf){
+	/*if (ip_header->Checksum == checksumBuf){
 		return true;
 	}
 	else{
 		return false;
-	}
-	/*if (ChecksumCompute(check_buff, sizeof(IPHeader_t)) != 0){
-	return false;
+	}*/
+	if (ChecksumCompute(check_buff, sizeof(IPHeader_t)) != 0){
+		return false;
 	}
 	else{
-	return true;
-	}*/
+		return true;
+	}
 }
 
 void ARPRequest(pcap_t *adhandle, UCHAR *srcMAC, ULONG srcIP, ULONG targetIP){
@@ -117,22 +118,26 @@ UINT Capture(PVOID pParam){
 			FrameHeader_t *fh;
 			fh = (FrameHeader_t *)pkt_data;
 			switch (ntohs(fh->FrameType)){
-			case 0x0806:
+			case 0x0806:	//ARP
 				ARPFrame_t *ARPf;
 				ARPf = (ARPFrame_t *)pkt_data;
 				ARPPacketProc(header, pkt_data);
 				break;
-			case 0x0800:
-				IPFrame_t *IPf;
-				IPf = (IPFrame_t *)pkt_data;
+			case 0x0800:	//IP
+				IPFrame_t *IPFrame;
+				IPFrame = (IPFrame_t *)pkt_data;
 				IPPacketProc(pIfInfo, header, pkt_data);
 				break;
 			default:
 				break;
 			}
 		}
-		else if (!res) { continue; }
-		else { fprintf(stderr, "Error reading data packet: %s\n", pcap_geterr(pIfInfo->adhandle)); }
+		else if (!res) { 
+			continue; 
+		}
+		else { 
+			fprintf(stderr, "Error reading data packet: %s\n", pcap_geterr(pIfInfo->adhandle)); 
+		}
 
 	}
 	return 0;
@@ -154,7 +159,8 @@ UINT WINAPI CaptureLocalARP(PVOID pParam)
 	while (true){
 		Sleep(50);
 		res = pcap_next_ex(pIfInfo->adhandle, &header, &pkt_data);
-		if (!res) continue;
+		if (!res) 
+			continue;
 		if (res > 0){
 			ARPFrame = (ARPFrame_t*)(pkt_data);
 			if ((ARPFrame->FrameHeader.FrameType == htons(0x0806)) &&
@@ -179,7 +185,7 @@ void ARPPacketProc(struct pcap_pkthdr *header, const u_char *pkt_data){
 	if (ARPFrame.Operation == ntohs(0x0002)){
 		Logprint("Receive ARP Response");
 		Logprint("ARP " + (IPntoa(ARPFrame.SrcIP)) + " -- " + MACntoa(ARPFrame.SrcHA));
-		if (IPQuery(ARPFrame.SrcIP, macAddr)){
+		if (IPQuery(ARPFrame.SrcIP, macAddr)){	//handle IP-MAC Mapping
 			Logprint("this correspondence existed in IP-MAC Mapping");
 			return;
 		}
@@ -192,7 +198,9 @@ void ARPPacketProc(struct pcap_pkthdr *header, const u_char *pkt_data){
 		WaitForSingleObject(mMutex, INFINITE);
 		do{
 			flag = false;
-			if (SP.empty()) break;
+			if (SP.empty()) 
+				break;
+			//ergodic buffer
 			list<SendPacket_t>::iterator sPacket;
 			for (sPacket = SP.begin(); sPacket != SP.end();sPacket++){
 				if (sPacket->TargetIP == ARPFrame.SrcIP){
@@ -235,18 +243,18 @@ void IPPacketProc(IfInfo_t *pIfInfo, struct pcap_pkthdr *header, const u_char *p
 	SendPacket_t sPacket;
 	IPFrame = (IPFrame_t *)pkt_data;
 	Logprint("Receive IP Packet: " + IPntoa(IPFrame->IPHeader.SrcIP) + " -> " + IPntoa(IPFrame->IPHeader.DesIP));
-	if (IPFrame->IPHeader.TTL <= 0){
+	if (IPFrame->IPHeader.TTL <= 0){	//ICMP timeout
 		ICMPPacketProc(pIfInfo, 11, 0, pkt_data);
 		return;
 	}
 	IPHeader_t *IpHeader = &(IPFrame->IPHeader);
-	if (!IsChecksum((char *)IpHeader)){
+	if (!IsChecksum((char *)IpHeader)){	//ICMP Error
 		Logprint("IP Packet Checksum Error,discard data packet");
 		return;
 	}
 	DWORD nextHop;
 	UINT ifNo;
-	if ((nextHop = RouteQuery(ifNo, IPFrame->IPHeader.DesIP, RouteTable)) == -1){
+	if ((nextHop = RouteQuery(ifNo, IPFrame->IPHeader.DesIP, RouteTable)) == -1){	//ICMP Des not reachable
 		ICMPPacketProc(pIfInfo, 3, 0, pkt_data);
 		return;
 	}
@@ -255,7 +263,7 @@ void IPPacketProc(IfInfo_t *pIfInfo, struct pcap_pkthdr *header, const u_char *p
 		sPacket.TargetIP = nextHop;
 		cpyMAC(IPFrame->FrameHeader.SrcMAC, IfInfo[sPacket.IfNo].MACAddr);
 		IPFrame->IPHeader.TTL -= 1;
-		unsigned short check_buff[sizeof(IPHeader_t)];
+		USHORT check_buff[sizeof(IPHeader_t)];
 		IPFrame->IPHeader.Checksum = 0;
 		memset(check_buff, 0, sizeof(IPHeader_t));
 		IPHeader_t *ip_header = &(IPFrame->IPHeader);
@@ -273,13 +281,15 @@ void IPPacketProc(IfInfo_t *pIfInfo, struct pcap_pkthdr *header, const u_char *p
 				+ IPntoa(IPFrame->IPHeader.DesIP) + "     " + MACntoa(IPFrame->FrameHeader.SrcMAC)
 				+ " -> " + MACntoa(IPFrame->FrameHeader.DesMAC));
 		}
-		else{
+		else{	//insert to buffer queue
 			if (SP.size() < 65530){
 				sPacket.len = header->len;
 				memcpy(sPacket.PktData, pkt_data, header->len);
 				WaitForSingleObject(mMutex, INFINITE);
 				sPacket.n_mTimer = TimerCount;
-				if (TimerCount++ > 65533) TimerCount = 1;
+				if (TimerCount++ > 65533) 
+					TimerCount = 1;
+				SetTimer(NULL, sPacket.n_mTimer, 10000, OnTimer);
 				SP.push_back(sPacket);
 				ReleaseMutex(mMutex);
 				Logprint("UnKnown Des MAC,put IP Packet in buffer: " + IPntoa(IPFrame->IPHeader.SrcIP) + " -> "
@@ -298,7 +308,7 @@ void IPPacketProc(IfInfo_t *pIfInfo, struct pcap_pkthdr *header, const u_char *p
 }
 
 DWORD RouteQuery(UINT &ifNo, DWORD desIP, list<RouteTable_t> routeTable){
-	DWORD MaxMask = 0;
+	DWORD MaxMask = 0;	//Get the longest mask;
 	int Index = -1;
 	list<RouteTable_t>::iterator rt;
 	DWORD tmp;
@@ -307,13 +317,17 @@ DWORD RouteQuery(UINT &ifNo, DWORD desIP, list<RouteTable_t> routeTable){
 			Index ++;
 			if (rt->Mask >= MaxMask){
 				ifNo = rt->IfNo;
-				if (rt->NextHop == 0) tmp = desIP;
-				else tmp = rt->NextHop;
+				if (rt->NextHop == 0)
+					tmp = desIP;
+				else 
+					tmp = rt->NextHop;
 			}
 		}
 	}
-	if (Index == -1) return -1;
-	else return tmp;
+	if (Index == -1) 
+		return -1;
+	else 
+		return tmp;
 }
 
 void ICMPPacketProc(IfInfo_t *pIfInfo, BYTE type, BYTE code, const u_char *pkt_data){
@@ -333,38 +347,42 @@ void ICMPPacketProc(IfInfo_t *pIfInfo, BYTE type, BYTE code, const u_char *pkt_d
 	((IPHeader_t *)(ICMPBuf + 14))->UpProtocol = 1;
 	((IPHeader_t *)(ICMPBuf + 14))->SrcIP = ((IPHeader_t*)(pkt_data + 14))->DesIP;
 	((IPHeader_t *)(ICMPBuf + 14))->DesIP = ((IPHeader_t*)(pkt_data + 14))->SrcIP;
-	((IPHeader_t *)(ICMPBuf + 14))->Checksum = htons(ChecksumCompute((unsigned short *)(ICMPBuf + 14), 20));
+	((IPHeader_t *)(ICMPBuf + 14))->Checksum = htons(ChecksumCompute((USHORT *)(ICMPBuf + 14), 20));
 	
 	//fill ICMP Header
 	((ICMPHeader_t *)(ICMPBuf + 34))->Type = type;
 	((ICMPHeader_t *)(ICMPBuf + 34))->Code = code;
 	((ICMPHeader_t *)(ICMPBuf + 34))->ID = 0;
 	((ICMPHeader_t *)(ICMPBuf + 34))->Sequence = 0;
-	((ICMPHeader_t *)(ICMPBuf + 34))->Checksum = htons(ChecksumCompute((unsigned short *)(ICMPBuf + 34), 8));
+	((ICMPHeader_t *)(ICMPBuf + 34))->Checksum = htons(ChecksumCompute((USHORT *)(ICMPBuf + 34), 8));
 	
 	//fill data
 	memcpy((u_char *)(ICMPBuf + 42), (IPHeader_t*)(pkt_data + 14), 20);
 	memcpy((u_char*)(ICMPBuf + 62), (u_char *)(pkt_data + 34), 8);
 	pcap_sendpacket(pIfInfo->adhandle, (u_char *)ICMPBuf, 70);
-	if (type == 11)Logprint("Send ICMP Error: " + string(pcap_geterr(pIfInfo->adhandle)));
-	if (type == 3)Logprint("Send ICMP timeout");
+	if (type == 11)
+		Logprint("Send ICMP Error: " + string(pcap_geterr(pIfInfo->adhandle)));
+	if (type == 3)
+		Logprint("Send ICMP timeout");
 	Logprint("ICMP -> " + IPntoa(((IPHeader_t*)(ICMPBuf + 14))->DesIP) + " - " + MACntoa(((FrameHeader_t*)ICMPBuf)->DesMAC));
 	delete[] ICMPBuf;
 }
 
 
-unsigned short ChecksumCompute(unsigned short *buffer, int size){
+USHORT ChecksumCompute(USHORT *buffer, int size){
 	unsigned long cksum = 0;
 	while (size > 1){
 		cksum += *buffer++;
-		size -= sizeof(unsigned short);
+		size -= sizeof(USHORT);
 	}
 	if (size){
+		//maybe have 8bits alone
 		cksum += *(unsigned char *)buffer;
 	}
+	//add hight 16bits to low 16bits
 	cksum = (cksum >> 16) + (cksum & 0xffff);
 	cksum += (cksum >> 16);
-	return (unsigned short)(~cksum);
+	return (USHORT)(~cksum);
 }
 
 
