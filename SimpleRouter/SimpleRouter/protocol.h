@@ -7,7 +7,8 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <string>
-#include "stdafx.h"
+#include <vector>
+#include <list>
 #include "pcap.h"
 using namespace std;
 //some Protocol and Router Struct
@@ -65,7 +66,7 @@ struct IfInfo_t{ //Interface info
 	string DeviceName;
 	string Description;
 	UCHAR MACAddr[6];
-	CArray <IP_t, IP_t&> IP;
+	vector<IP_t> IP;
 	pcap_t *adhandle;
 };
 
@@ -88,6 +89,16 @@ struct IP_MAC_t{ //the mapping of IP and MAC
 	ULONG IPAddr;
 	UCHAR MACAddr[6];
 };
+
+//Global Variable 
+extern IfInfo_t IfInfo[MAX_INTERFACE];
+extern int IfCount;  //the size of interface
+extern UINT_PTR TimerCount;
+extern list<SendPacket_t> SP; //the buffer queue of SendPacket
+extern list<IP_MAC_t> IP_MAC; //the list of IP_MAC mapping
+extern list<RouteTable_t> RouteTable;
+//CMutex mMutex(0, 0, 0);
+extern HANDLE mMutex;
 
 
 #endif
