@@ -7,6 +7,7 @@
 #include "pcap.h"
 #include <ctime>
 #include <cstdio>
+#include <iostream>
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -30,14 +31,14 @@ CMutex mMutex(0, 0, 0);
 void Logprint(string str){
 	time_t tt = time(NULL);
 	tm* t = localtime(&tt);
-	printf("%d-%02d-%02d %02d:%02d:%02d     %s\n",
+	printf("%d-%02d-%02d %02d:%02d:%02d     ",
 		t->tm_year + 1900,
 		t->tm_mon + 1,
 		t->tm_mday,
 		t->tm_hour,
 		t->tm_min,
-		t->tm_sec,
-		str.data());
+		t->tm_sec);
+	cout << str << endl;
 }
 
 void setMAC(UCHAR *MAC, UCHAR ch){
@@ -67,7 +68,7 @@ string IPntoa(ULONG nIPAddr){
 	u_char *p;
 	string str;
 	p = (u_char*)&nIPAddr;
-	sprintf(strbuf, "%03d.%03d.%03d.%03d", p[0], p[1], p[2], p[3]);
+	sprintf(strbuf, "%d.%d.%d.%d", p[0], p[1], p[2], p[3]);
 	str = strbuf;
 	return str;
 }
@@ -83,15 +84,25 @@ string MACntoa(UCHAR *nMACAddr){
 bool IsChecksum(char *buffer){
 	IPHeader_t * ip_header = (IPHeader_t *)buffer;
 
-	USHORT check_buff[sizeof(IPHeader_t)];
-	memcpy(check_buff, ip_header, sizeof(IPHeader_t));
+	unsigned short check_buff[sizeof(IPHeader_t)];
+	unsigned short checksumBuf = ip_header->Checksum;
 
-	if (ChecksumCompute(check_buff, sizeof(IPHeader_t)) != 0){
+	ip_header->Checksum = 0;
+
+	memset(check_buff, 0, sizeof(IPHeader_t));
+	memcpy(check_buff, ip_header, sizeof(IPHeader_t));
+	ip_header->Checksum = ChecksumCompute(check_buff,sizeof(IPHeader_t));
+	if(ip_header->Checksum == checksumBuf){
+		return true;
+	}else{
+		return false;
+	}
+	/*if (ChecksumCompute(check_buff, sizeof(IPHeader_t)) != 0){
 		return false;
 	}
 	else{
 		return true;
-	}
+	}*/
 }
 
 void ARPRequest(pcap_t *adhandle, UCHAR *srcMAC, ULONG srcIP, ULONG targetIP){
@@ -274,11 +285,12 @@ void IPPacketProc(IfInfo_t *PIfInfo, struct pcap_pkthdr *header, const u_char *p
 	}
 	else{
 		sPacket.IfNo = IfNo;
-		sPacket.TargetIP = nextHop; //Why?
+		sPacket.TargetIP = nextHop; 
 		cpyMAC(IPFrame->FrameHeader.SrcMAC, IfInfo[sPacket.IfNo].MACAddr);
 		IPFrame->IPHeader.TTL -= 1;
-		USHORT check_buff[sizeof(IPHeader_t)];
+		unsigned short check_buff[sizeof(IPHeader_t)];
 		IPFrame->IPHeader.Checksum = 0;
+		memset(check_buff, 0, sizeof(IPHeader_t));
 		IPHeader_t * ip_header = &(IPFrame->IPHeader);
 		memcpy(check_buff, ip_header, sizeof(IPHeader_t));
 		IPFrame->IPHeader.Checksum = ChecksumCompute(check_buff, sizeof(IPHeader_t));
@@ -374,14 +386,14 @@ void ICMPPacketProc(IfInfo_t *pIfInfo, BYTE type, BYTE code, const u_char *pkt_d
 	((IPHeader_t*)(ICMPBuf + 14))->UpProtocol = 1;
 	((IPHeader_t*)(ICMPBuf + 14))->SrcIP = ((IPHeader_t*)(pkt_data + 14))->DesIP;
 	((IPHeader_t*)(ICMPBuf + 14))->DesIP = ((IPHeader_t*)(pkt_data + 14))->SrcIP;
-	((IPHeader_t*)(ICMPBuf + 14))->Checksum = htons(ChecksumCompute((USHORT*)(ICMPBuf + 14), 20));
+	((IPHeader_t*)(ICMPBuf + 14))->Checksum = htons(ChecksumCompute((unsigned short*)(ICMPBuf + 14), 20));
 
 	//fill ICMP Header
 	((ICMPHeader_t*)(ICMPBuf + 34))->Type = type;
 	((ICMPHeader_t*)(ICMPBuf + 34))->Code = code;
 	((ICMPHeader_t*)(ICMPBuf + 34))->ID = 0;
 	((ICMPHeader_t*)(ICMPBuf + 34))->Sequence = 0;
-	((ICMPHeader_t*)(ICMPBuf + 34))->Checksum = htons(ChecksumCompute((USHORT*)(ICMPBuf + 34), 8));
+	((ICMPHeader_t*)(ICMPBuf + 34))->Checksum = htons(ChecksumCompute((unsigned short*)(ICMPBuf + 34), 8));
 
 	//fill data
 	memcpy((u_char*)(ICMPBuf + 42), (IPHeader_t*)(pkt_data + 14), 20);
@@ -401,21 +413,21 @@ void ICMPPacketProc(IfInfo_t *pIfInfo, BYTE type, BYTE code, const u_char *pkt_d
 	delete[]ICMPBuf;
 }
 
-USHORT ChecksumCompute(USHORT *buffer, int size){
-	ULONG cksum = 0;
+unsigned short ChecksumCompute(unsigned short *buffer, int size){
+	unsigned long cksum = 0;
 	while (size > 1){
 		cksum += *buffer++;
-		size -= sizeof(USHORT);
+		size -= sizeof(unsigned short);
 	}
 	if (size){
 		//maybe have 8bits alone
-		cksum += *(UCHAR*)buffer;
+		cksum += *(unsigned char*)buffer;
 	}
 
 	//add hight 16bits to low 16bits
 	cksum = (cksum >> 16) + (cksum & 0xffff);
 	cksum += (cksum >> 16);
-	return (USHORT)(~cksum);
+	return (unsigned short)(~cksum);
 }
 
 
@@ -453,7 +465,7 @@ void init(){
 	pcap_addr_t *a;
 	struct bpf_program fcode;
 	char errbuf[PCAP_BUF_SIZE], strbuf[1000];
-	IP_t ipaddr;
+	IP_t *ipaddr = NULL;
 	UCHAR srcMAC[6];
 	ULONG srcIP;
 	int i = 0, j = 0, k = 0;
@@ -471,17 +483,16 @@ void init(){
 			IfInfo[i].Description = d->description;
 			for (a = d->addresses; a; a = a->next){
 				if (a->addr->sa_family == AF_INET){
-					ipaddr.IPAddr = (((struct sockaddr_in *)a->addr)->sin_addr.s_addr);
-					ipaddr.IPMask = (((struct sockaddr_in *)a->netmask)->sin_addr.s_addr);
-					IfInfo[i].IP.Add(ipaddr);
+					ipaddr = new IP_t();
+					ipaddr->IPAddr = (((struct sockaddr_in *)a->addr)->sin_addr.s_addr);
+					ipaddr->IPMask = (((struct sockaddr_in *)a->netmask)->sin_addr.s_addr);
+					IfInfo[i].IP.Add(*ipaddr);
 					j++;
 				}
 			}
+			i++;
 			if (i == MAX_INTERFACE){	//handle interface celling
 				break;
-			}
-			else{
-				i++;
 			}
 		}
 	}
@@ -498,7 +509,7 @@ void init(){
 			exit(0);
 		}
 	}
-	Logprint("!!!!!");
+	
 	//Create thread capture,get local interface MAC
 	CWinThread *pthread;
 	for (i = 0; i < IfCount; i++){
@@ -543,12 +554,12 @@ void init(){
 
 	//print interface info
 	for (i = 0; i < IfCount; i++){
-		printf("Interface: ");
-		printf("     Device: %s\n", IfInfo[i].DeviceName);
-		printf("     Description: %s\n", IfInfo[i].Description);
-		printf("     MAC Address: %s\n", MACntoa(IfInfo[i].MACAddr));
+		cout<<"Interface: \n";
+		cout<<"     Device: "<<IfInfo[i].DeviceName<<endl;
+		cout<<"     Description: "<<IfInfo[i].Description<<endl;
+		cout<<"     MAC Address: "<<MACntoa(IfInfo[i].MACAddr)<<endl;
 		for (j = 0; j < IfInfo[i].IP.GetSize(); j++){
-			printf("     IP Address: %s\n", IPntoa(IfInfo[i].IP[j].IPAddr));
+			cout<<"     IP Address: "<<IPntoa(IfInfo[i].IP[j].IPAddr)<<endl;
 		}
 	}
 
@@ -568,7 +579,8 @@ void init(){
 	string Filter, Filter0, Filter1;
 	Filter0 = "(";
 	Filter1 = "(";
-	for (i = 0; i < IfCount; i++){
+	for (i = 0; i < IfCount; i++)
+	{
 		Filter0 += "(ether dst " + MACntoa(IfInfo[i].MACAddr) + ")";
 		for (j = 0; j < IfInfo[i].IP.GetSize(); j++){
 			Filter1 += "(ip dst host " + IPntoa(IfInfo[i].IP[j].IPAddr) + ")";
@@ -587,7 +599,7 @@ void init(){
 		}
 	}
 	Filter = Filter0 + " and ((arp and (ether[21]=0x2)) or (not" + Filter1 + "))";
-	sprintf(strbuf, "%s", Filter);
+	sprintf(strbuf, "%s", Filter.c_str());
 	for (i = 0; i < IfCount; i++){
 		if (pcap_compile(IfInfo[i].adhandle, &fcode, strbuf, 1, IfInfo[i].IP[0].IPMask) < 0){
 			Logprint("Filter rule Compile Failed");
@@ -614,15 +626,15 @@ void AddRouter(string mask, string desIP, string nexthop){
 	int i, j;
 	DWORD ipaddr;
 	RouteTable_t rt;
-	ipaddr = htonl(inet_addr(nexthop.data()));
+	ipaddr = inet_addr(nexthop.data());
 
 	for (i = 0; i < IfCount; i++){
 		for (j = 0; j < IfInfo[i].IP.GetSize(); j++){
 			if (((IfInfo[i].IP[j].IPAddr)&(IfInfo[i].IP[j].IPMask)) == ((IfInfo[i].IP[j].IPMask)&ipaddr)){
 				rt.IfNo = i;
-				rt.Mask = htonl(inet_addr(mask.data()));
-				rt.DesIP = htonl(inet_addr(desIP.data()));
-				rt.NextHop = htonl(inet_addr(nexthop.data()));
+				rt.Mask = inet_addr(mask.data());
+				rt.DesIP = inet_addr(desIP.data());
+				rt.NextHop = inet_addr(nexthop.data());
 				RouteTable.AddTail(rt);
 			}
 		}
@@ -641,11 +653,50 @@ void DeleteRouter(string mask, string desIP, string nexthop){
 	for (i = 0; i < RouteTable.GetCount();i++){
 		CurrentPos = pos;
 		rt = RouteTable.GetNext(pos);
-		if (rt.Mask == htonl(inet_addr(mask.data())) 
-			&& rt.DesIP == htonl(inet_addr(desIP.data())) 
-			&& rt.NextHop == htonl(inet_addr(nexthop.data()))){
+		if (rt.Mask == inet_addr(mask.data()) 
+			&& rt.DesIP == inet_addr(desIP.data()) 
+			&& rt.NextHop == inet_addr(nexthop.data())){
 			RouteTable.RemoveAt(CurrentPos);
 			return;
+		}
+	}
+
+}
+
+void listRouteTable(){
+	int i;
+	RouteTable_t rt;
+	POSITION pos, CurrentPos;
+	if (RouteTable.IsEmpty()){
+		return;
+	}
+	pos = RouteTable.GetHeadPosition();
+	for (i = 0; i < RouteTable.GetCount(); i++){
+		CurrentPos = pos;
+		rt = RouteTable.GetNext(pos);
+		if (rt.NextHop == 0){
+			cout << IPntoa(rt.DesIP) << "\t" << IPntoa(rt.Mask) << "\t" << "direct" << "\t" << rt.IfNo << endl;
+		}
+		else{
+			cout << IPntoa(rt.DesIP) << "\t" << IPntoa(rt.Mask) << "\t" << IPntoa(rt.NextHop) << "\t" << rt.IfNo << endl;
+		}
+		
+	}
+}
+
+void GetCmd(){
+	string cmd, mask, des, nexthop;
+	while (cin >> cmd){
+		if (cmd == "list"){
+			listRouteTable();
+		}
+		else if (cmd == "add"){
+			cin >> des >> mask >> nexthop;
+			AddRouter(mask, des, nexthop);
+		}
+		else if (cmd == "delete"){
+			cin >> des >> mask >> nexthop;
+			DeleteRouter(mask, des, nexthop);
 		}
 	}
 
@@ -668,8 +719,10 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 		}
 		else
 		{
-			// TODO: code your application's behavior here.
+			// TODO: code your application's behavior here.x`
+			Logprint("Start");
 			init();
+			GetCmd();
 		}
 	}
 	else
